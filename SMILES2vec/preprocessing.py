@@ -59,8 +59,8 @@ def demapping(mapping):
 
 def preprocessing(seed=233):
     ''' returns X_onehot_train, X_onehot_test, X_long_train, X_long_test, y_train, y_test, demapping'''
-    freesolv_data = pd.read_json(r"data/FreeSolv_database.json").T
-    fs_smiles = np.array(freesolv_data['smiles'])
+    freesolv_data = pd.read_csv("data/database.txt",sep="; ", skiprows=2, engine='python')
+    fs_smiles = np.array(freesolv_data['SMILES'])
     mapping, maxlength = smiles_mapping(fs_smiles)
     np.random.seed(seed)
     size = len(fs_smiles)
@@ -70,11 +70,11 @@ def preprocessing(seed=233):
     X_onehot_test = [torch.FloatTensor(smiles2onehot(i, mapping, maxlength)[0]) for i in fs_smiles[idx][split_point:]]
     X_long_train = [torch.LongTensor(smiles2onehot(i, mapping, maxlength)[1]) for i in fs_smiles[idx][:split_point]]
     X_long_test = [torch.LongTensor(smiles2onehot(i, mapping, maxlength)[1]) for i in fs_smiles[idx][split_point:]]
-    y = freesolv_data['calc_s (cal/mol.K)'].copy()
-    y[y.isnull()] = freesolv_data[y.isnull()]['calc_s']
+    y = freesolv_data['experimental value (kcal/mol)'].copy()
+    #y[y.isnull()] = freesolv_data[y.isnull()]['calc_s']
     y = np.array(y,dtype=np.float)
     y = (y - y.mean())/ y.std()
-    y = torch.tensor(y)
+    y = torch.FloatTensor(y)
     y_train =  y[idx][:split_point]
     y_test =  y[idx][split_point:]
     return X_onehot_train, X_onehot_test, X_long_train, X_long_test, y_train, y_test ,demapping(mapping)

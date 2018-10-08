@@ -22,7 +22,7 @@ class batch_generator():
         self.static_counter = 0
         self.new_round=False
         
-    def next_batch(self, X, y):
+    def next_batch(self, X, y, z):
         ''' should be same length for X and y '''
         if self.static_counter==None:
             self.static_counter = 0
@@ -30,12 +30,12 @@ class batch_generator():
         if ( self.static_counter+1 ) * self.batch_size >= data_size:
             self.static_counter = 0
             self.new_round = True
-            return X[ data_size - self.batch_size: ], y[data_size - self.batch_size : ]
+            return X[ data_size - self.batch_size: ], y[data_size - self.batch_size : ],  z[data_size - self.batch_size : ]
         else:
             self.static_counter += 1
             self.new_round = False
             start, end = self.batch_size * ( self.static_counter -1 ) , self.batch_size * self.static_counter
-            return X[start: end], y[start: end]
+            return X[start: end], y[start: end], z[start: end]
 
 class decoder_gru(nn.Module):
     ''' implement different decoder for debugging 
@@ -82,7 +82,7 @@ class autoencoder_gru(nn.Module):
         self.feature_size = feature_size
         self.dense_size = dense_size
         self.embedding_size = 10
-        self.layer_size = 2
+        self.layer_size = 1
         self.device = device
         #self.E_hidden_size = 15 # size between GRU
         #self.D_hidden_size = 20
@@ -171,3 +171,22 @@ class VAE_gru(nn.Module):
             return eps.mul(std).add_(mu)
         else:
             return mu.to(self.device)
+
+class Predictor(nn.Module):
+    def __init__(self, dense_size):
+        super().__init__()
+        hidden1, hidden2 =80, 50
+        self.layer1 = nn.Sequential(
+            nn.Linear(dense_size, hidden1),
+            nn.ReLU()
+        )
+        self.layer2 = nn.Sequential(
+            nn.Linear(hidden1, hidden2),
+            nn.ReLU()
+        )
+        self.layer3 = nn.Linear(hidden2, 1)
+    def forward(self, dense_input):
+        output = self.layer1(dense_input)
+        output = self.layer2(output)
+        output = self.layer3(output)
+        return output
