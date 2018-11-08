@@ -8,7 +8,7 @@ def smiles_preprocess(smiles):
     smiles = smiles.replace('Br','r')
     return smiles
 
-def smiles_mapping(smiles_list, threshold=30):
+def smiles_mapping(smiles_list, threshold=10000):
     ''' return the mapping (including EOM) and maxlength for a list of smiles '''
     smiles_list = [smiles_preprocess(i) for i in smiles_list]
     total_str = ''.join(smiles_list)
@@ -59,21 +59,22 @@ def demapping(mapping):
 
 def preprocessing(seed=233):
     ''' returns X_onehot_train, X_onehot_test, X_long_train, X_long_test, y_train, y_test, demapping'''
-    freesolv_data = pd.read_csv("data/database.txt",sep="; ", skiprows=2, engine='python')
-    fs_smiles = np.array(freesolv_data['SMILES'])
-    mapping, maxlength = smiles_mapping(fs_smiles)
+    zinc_data = pd.read_csv("data/zinc_250k.csv")
+    zinc_smiles = np.array([i[:-1] for i in zinc_data['smiles']])
+    mapping, maxlength = smiles_mapping(zinc_smiles)
     np.random.seed(seed)
-    size = len(fs_smiles)
+    #size = len(zinc_smiles)
+    size=10000
     idx = np.random.permutation(size)
-    split_point = int(size * 0.8)
-    X_onehot_train = [torch.FloatTensor(smiles2onehot(i, mapping, maxlength)[0]) for i in fs_smiles[idx][:split_point]]
-    X_onehot_test = [torch.FloatTensor(smiles2onehot(i, mapping, maxlength)[0]) for i in fs_smiles[idx][split_point:]]
-    X_long_train = [torch.LongTensor(smiles2onehot(i, mapping, maxlength)[1]) for i in fs_smiles[idx][:split_point]]
-    X_long_test = [torch.LongTensor(smiles2onehot(i, mapping, maxlength)[1]) for i in fs_smiles[idx][split_point:]]
-    y = freesolv_data['experimental value (kcal/mol)'].copy()
-    #y[y.isnull()] = freesolv_data[y.isnull()]['calc_s']
+    split_point = int(size * 0.7)
+    X_onehot_train = [torch.FloatTensor(smiles2onehot(i, mapping, maxlength)[0]) for i in zinc_smiles[idx][:split_point]]
+    X_onehot_test = [torch.FloatTensor(smiles2onehot(i, mapping, maxlength)[0]) for i in zinc_smiles[idx][split_point:size]]
+    X_long_train = [torch.LongTensor(smiles2onehot(i, mapping, maxlength)[1]) for i in zinc_smiles[idx][:split_point]]
+    X_long_test = [torch.LongTensor(smiles2onehot(i, mapping, maxlength)[1]) for i in zinc_smiles[idx][split_point:size]]
+    y = zinc_data['logP'].copy()
+    #y[y.isnull()] = zinc_data[y.isnull()]['calc_s']
     y = np.array(y,dtype=np.float)
     y = torch.FloatTensor(y)
     y_train =  y[idx][:split_point]
-    y_test =  y[idx][split_point:]
+    y_test =  y[idx][split_point:size]
     return X_onehot_train, X_onehot_test, X_long_train, X_long_test, y_train, y_test ,demapping(mapping)

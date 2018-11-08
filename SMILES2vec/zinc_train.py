@@ -1,32 +1,43 @@
-from preprocessing import preprocessing
-from module import batch_generator, decoder_gru,  autoencoder_gru, VAE_gru, Predictor
+from zinc_preprocessing import preprocessing
+from zinc_module import batch_generator, decoder_gru,  autoencoder_gru, VAE_gru, Predictor
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import time 
+import logging
+
+logger = logging.getLogger('ml')
+logger.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s    %(levelname)-10s %(message)s')
+fh = logging.FileHandler('_ml.log')
+ch = logging.StreamHandler()
+fh.setFormatter(formatter)
+ch.setFormatter(formatter)
+logger.addHandler(fh)
+logger.addHandler(ch)
 
 def main():
 
     def predict_result(i):
         encoding_each = RNN.encode(X_long_test[i])[0][-1].reshape(-1)
         y_predict = predictor(encoding_each)*std + mean
-        print( decipher(demapping, X_onehot_test[i]))
-        print("predict: %.3f   actual: %.3f" % (y_predict, y_test[i]) )
-        print(MSE_f(y_predict, y_test[i]).item())
+        logger.info( decipher(demapping, X_onehot_test[i]))
+        logger.info("predict: %.3f   actual: %.3f" % (y_predict, y_test[i]) )
+        logger.info(MSE_f(y_predict, y_test[i]).item())
 
     def see_result( i = 234): # inner function / bad habit !
         #result = RNN(x0) # variation=False
         result = RNN(X_long_train[i], X_onehot_train[i], teacher_forcing=True)
         encoding_each = RNN.encode(X_long_train[i])[0][-1].reshape(-1)
         y_predict = predictor(encoding_each)
-        print( decipher(demapping, X_onehot_train[i]))
-        print( decipher(demapping, result))
-        print( decipher(demapping, RNN(X_long_train[i])))
-        print("predict: %.3f   actual: %.3f" % (y_predict, y_train[i]) )
+        logger.info( decipher(demapping, X_onehot_train[i]))
+        logger.info( decipher(demapping, result))
+        logger.info( decipher(demapping, RNN(X_long_train[i])))
+        logger.info("predict: %.3f   actual: %.3f" % (y_predict, y_train[i]) )
 
-    SAVE_PATH = "data/auto_gru_pred"
-    SAVE_PATH2 = "data/predictor"
+    SAVE_PATH = "data/auto_gru_ZINC"
+    SAVE_PATH2 = "data/predictor_ZINC"
 
     continue_training = False
 
@@ -46,8 +57,8 @@ def main():
     y_train = (y_train - mean)/std
 
     # setup, pre-defined hyperparameter
-    predictor = Predictor(14)
-    RNN =autoencoder_gru(23, 14, device)
+    predictor = Predictor(60)
+    RNN =autoencoder_gru(28, 60, device)
     if continue_training:
         print("continue training!")
         RNN.load_state_dict(torch.load(SAVE_PATH))
@@ -55,17 +66,18 @@ def main():
     RNN.to(device)
     predictor.to(device)
     
-    epoch_n = 50
-    batch_size = 20
+    epoch_n = 60
+    batch_size = 1000
     count = 0
-    optimizer = optim.Adam(RNN.parameters(), lr=0.003)
-    optimizerP = optim.Adam(predictor.parameters(), lr=0.002)
+    optimizer = optim.Adam(RNN.parameters(), lr=0.008, weight_decay=0.0005)
+    optimizerP = optim.Adam(predictor.parameters(), lr=0.003, weight_decay=0.0005)
     generator = batch_generator(batch_size=batch_size)
     KLD_f = nn.KLDivLoss()
     MSE_f = nn.MSELoss()
     beta = 0.5 # control the loss ratio
     # training
     print("start training, total epoch:%d" % (epoch_n) )
+    logger.info("start training, total epoch:%d" % (epoch_n) )
 
     #logging testing
     if continue_training:
@@ -85,7 +97,7 @@ def main():
             loss_Y = torch.tensor([0.]).to(device)
             # calculate reconstruction loss and prediction loss
             for (x_onehot_each, x_long_each, y_train_each) in zip(x_onehot_batch, x_long_batch, y_train_batch):
-                x_onehot_each = x_onehot_each.reshape(x_onehot_each.size(0), 1, -1) 
+                x_onehot_each = x_onehot_each.reshape(x_onehot_each.size(0), 1, -1)
                 if epoch >= epoch_n * 0.25  or continue_training   : # control prediction phase
                     ratio = beta
                 if epoch <= epoch_n * 0.15 and (not continue_training) : #control teacher forcing phase
@@ -106,6 +118,7 @@ def main():
             #calculate prediction loss
         
             loss = loss_train + loss_Y
+            #loss = loss_train
             
             # update weight
             optimizer.zero_grad()
@@ -116,9 +129,8 @@ def main():
 
             # logging
             count += batch_size
-            if count % (10*batch_size) == 0:
+            if count % (5*batch_size) == 0:
                 # testing set
-                acc = accuracy(X_onehot_test, X_long_test, RNN)
                 loss_log = 0
                 loss_Y_log = 0
                 for (x_onehot_each, x_long_each, y_each) in zip(X_onehot_test, X_long_test, y_test):
@@ -129,7 +141,9 @@ def main():
                     encoding_each = RNN.encode(x_long_each)[0][-1].reshape(-1)
                     y_pred = predictor(encoding_each) * std + mean
                     loss_Y_log += MSE_f(y_pred, y_each)
+                acc = accuracy(X_onehot_test, X_long_test, RNN)
                 print("time: %s  epoch:%d  train loss X:%.3f  test loss X:%.3f train loss Y:%.3f predicting RMSE loss: %.3f   accuracy:%d%%   progress:%d%%" % (time.ctime(), epoch, loss_train/len(x_long_batch), loss_log/len(y_test), (loss_Y/len(x_long_batch))**0.5*std ,(loss_Y_log/len(y_test))**0.5  , acc*100, count/len(y_train)/epoch_n*100 ) )
+                logger.info("epoch:%d  train loss X:%.3f  test loss X:%.3f train loss Y:%.3f predicting RMSE loss: %.3f   accuracy:%d%%   progress:%d%%" % ( epoch, loss_train/len(x_long_batch), loss_log/len(y_test), (loss_Y/len(x_long_batch))**0.5*std ,(loss_Y_log/len(y_test))**0.5  , acc*100, count/len(y_train)/epoch_n*100 ) )
                 see_result(233)
                 predict_result(25)
                 print()
@@ -168,6 +182,7 @@ def decipher(demapping,prob):
 def accuracy(x_onehot_batch, x_long_batch, RNN):
     correct = 0
     total = 0
+    count = 0
     for (x_onehot_each, x_long_each) in zip(x_onehot_batch, x_long_batch):
         x_onehot_each = x_onehot_each.reshape(x_onehot_each.size(0), 1, -1)
         x_pred = RNN(x_long_each)
@@ -176,7 +191,10 @@ def accuracy(x_onehot_batch, x_long_batch, RNN):
         seq_actual = x_long_each.view(-1)
         total += len(seq_pred)
         correct += (seq_pred == seq_actual).sum().item()
-    return correct/total
+        count += 1
+        if count == 200: # save computation time
+            return correct / total
+    return correct / total
 
 if __name__ == "__main__":
     main()

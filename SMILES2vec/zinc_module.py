@@ -46,31 +46,36 @@ class decoder_gru(nn.Module):
         self.feature_size = feature_size
         self.dense_size = dense_size
         self.device = device
-        self.embedding_size = 50
+        self.embedding_size = 80
+        self.embedding_size2 = 50
         self.linear1 = nn.Sequential(
             nn.Linear(dense_size, dense_size),
             nn.SELU()    
         )
         self.GRU1 = nn.GRU(input_size=dense_size+feature_size, hidden_size=self.embedding_size)
         self.GRU2 = nn.GRU(input_size=self.embedding_size, hidden_size=self.embedding_size)
-        self.linear2 = nn.Linear(self.embedding_size, feature_size)
-    def forward(self, input_dense, seq, input_onehot, teacher_forcing,):
-        dense_size = self.linear1(input_dense)
+        self.GRU3 = nn.GRU(input_size=self.embedding_size, hidden_size=self.embedding_size2)
+        self.linear2 = nn.Linear(self.embedding_size2, feature_size)
+
+    def forward(self, input_dense, seq, input_onehot, teacher_forcing):
+        input_dense = self.linear1(input_dense)
         hidden1 = torch.zeros(1,1,self.embedding_size).to(self.device)
         hidden2 = torch.zeros(1,1,self.embedding_size).to(self.device)
-        output3 = torch.zeros(1,1,self.feature_size).to(self.device)
-        next_input = torch.cat([input_dense, output3], dim=2)
+        hidden3 = torch.zeros(1,1,self.embedding_size2).to(self.device)
+        output4 = torch.zeros(1,1,self.feature_size).to(self.device)
+        next_input = torch.cat([input_dense, output4], dim=2)
         li = []
         for i in range(seq):
             output1, hidden1 = self.GRU1(next_input, hidden1)
             output2, hidden2 = self.GRU2(output1, hidden2)
-            output3 = self.linear2(output2)
-            li.append(output3)
+            output3, hidden3 = self.GRU3(output2, hidden3)
+            output4 = self.linear2(output3)
+            li.append(output4)
             if teacher_forcing:
                 next_input = torch.cat([input_dense, input_onehot[i].reshape(1,1,-1)], dim=2)
             else:
                 # we use onehot input for next stage
-                next_input = torch.cat([input_dense, F.softmax(output3, dim=2)], dim=2)
+                next_input = torch.cat([input_dense, F.softmax(output4, dim=2)], dim=2)
         return torch.cat(li)
 
 class autoencoder_gru(nn.Module):
@@ -81,8 +86,8 @@ class autoencoder_gru(nn.Module):
         super().__init__()
         self.feature_size = feature_size
         self.dense_size = dense_size
-        self.embedding_size = 10
-        self.layer_size = 1
+        self.embedding_size = 80
+        self.layer_size = 2
         self.device = device
         #self.E_hidden_size = 15 # size between GRU
         #self.D_hidden_size = 20
@@ -175,7 +180,7 @@ class VAE_gru(nn.Module):
 class Predictor(nn.Module):
     def __init__(self, dense_size):
         super().__init__()
-        hidden1, hidden2 =60, 20
+        hidden1, hidden2, hidden3, hidden4 = 200, 500, 200, 50
         self.layer1 = nn.Sequential(
             nn.Linear(dense_size, hidden1),
             nn.SELU()
@@ -184,9 +189,19 @@ class Predictor(nn.Module):
             nn.Linear(hidden1, hidden2),
             nn.SELU()
         )
-        self.layer3 = nn.Linear(hidden2, 1)
+        self.layer3 = nn.Sequential(
+            nn.Linear(hidden2, hidden3),
+            nn.SELU()
+        )
+        self.layer4 = nn.Sequential(
+            nn.Linear(hidden3, hidden4),
+            nn.SELU()
+        )
+        self.layer5 = nn.Linear(hidden4, 1)
     def forward(self, dense_input):
         output = self.layer1(dense_input)
         output = self.layer2(output)
         output = self.layer3(output)
+        output = self.layer4(output)
+        output = self.layer5(output)
         return output
