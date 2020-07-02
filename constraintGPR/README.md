@@ -1,0 +1,1 @@
+Implement the algorithm according to [Gaussian Processes with Linear Operator Inequality Constraints](http://jmlr.csail.mit.edu/papers/volume20/19-065/19-065.pdf) during a project on molacular machine learning
